@@ -1423,7 +1423,7 @@ void EmitX64::EmitPackedAddU8(IR::Block& block, IR::Inst* inst) {
     }
     code->xor_(result, reg_a);
     if (ge_inst) {
-        ExtractMostSignificantBitFromPackedBytes(cpu_info, code, reg_alloc, reg_ge);
+        ExtractMostSignificantBitFromPackedBytes(cpu_info, code, reg_alloc, reg_ge, tmp);
     }
 }
 
