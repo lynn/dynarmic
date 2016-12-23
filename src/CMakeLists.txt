@@ -35,6 +35,7 @@ set(HEADERS
     ../include/dynarmic/dynarmic.h
     ../include/dynarmic/callbacks.h
     ../include/dynarmic/disassembler.h
+    common/address_range.h
     common/assert.h
     common/bit_util.h
     common/common_types.h

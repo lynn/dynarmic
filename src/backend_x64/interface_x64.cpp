@@ -5,6 +5,7 @@
  */
 
 #include <memory>
+#include <queue>
 
 #include <fmt/format.h>
 
@@ -35,6 +36,7 @@ struct Jit::Impl {
             , jit_state()
             , emitter(&block_of_code, callbacks, jit)
             , callbacks(callbacks)
+            , invalid_cache_ranges()
     {}
 
     BlockOfCode block_of_code;
@@ -42,7 +44,8 @@ struct Jit::Impl {
     EmitX64 emitter;
     const UserCallbacks callbacks;
 
-    bool clear_cache_required = false;
+    // Requests made during execution to invalidate the cache are queued up here.
+    std::queue<std::unique_ptr<Common::AddressRange>> invalid_cache_ranges;
 
     size_t Execute(size_t cycle_count) {
         u32 pc = jit_state.Reg[15];
@@ -90,11 +93,22 @@ struct Jit::Impl {
         return result;
     }
 
-    void ClearCache() {
-        block_of_code.ClearCache();
-        emitter.ClearCache();
+    void PerformCacheInvalidation() {
+        if (invalid_cache_ranges.empty()) {
+            return;
+        }
+
         jit_state.ResetRSB();
-        clear_cache_required = false;
+        block_of_code.ClearCache();
+        while (!invalid_cache_ranges.empty()) {
+            auto range = std::move(invalid_cache_ranges.front());
+            invalid_cache_ranges.pop();
+            emitter.InvalidateCacheRange(*range);
+        }
+
+        // block_of_code.ClearCache();
+        // emitter.ClearCache();
+        // clear_cache_required = false;
     }
 
 private:
@@ -127,21 +141,29 @@ size_t Jit::Run(size_t cycle_count) {
         cycles_executed += impl->Execute(cycle_count - cycles_executed);
     }
 
-    if (impl->clear_cache_required) {
-        impl->ClearCache();
-    }
+    impl->PerformCacheInvalidation();
 
     return cycles_executed;
 }
 
-void Jit::ClearCache() {
+void Jit::HandleNewCacheRange() {
     if (is_executing) {
         impl->jit_state.halt_requested = true;
-        impl->clear_cache_required = true;
         return;
     }
 
-    impl->ClearCache();
+    impl->PerformCacheInvalidation();
+}
+
+void Jit::ClearCache() {
+    impl->invalid_cache_ranges.push(std::make_unique<Common::FullAddressRange>());
+    HandleNewCacheRange();
+}
+
+void Jit::InvalidateCacheRange(std::uint32_t start_address, std::size_t length) {
+    impl->invalid_cache_ranges.push(
+        std::make_unique<Common::AddressInterval>(start_address, length));
+    HandleNewCacheRange();
 }
 
 void Jit::Reset() {

@@ -14,6 +14,7 @@
 #include <xbyak_util.h>
 
 #include "backend_x64/reg_alloc.h"
+#include "common/address_range.h"
 #include "dynarmic/callbacks.h"
 #include "frontend/ir/location_descriptor.h"
 #include "frontend/ir/terminal.h"
@@ -49,8 +50,15 @@ public:
     /// Looks up an emitted host block in the cache.
     boost::optional<BlockDescriptor> GetBasicBlock(IR::LocationDescriptor descriptor) const;
 
-    /// Empties the cache.
+    /// Empties the entire cache.
     void ClearCache();
+
+    /**
+     * Invalidate the cache at a range of addresses.
+     * @param start_address The starting address of the range to invalidate.
+     * @param length The length (in bytes) of the range to invalidate.
+     */
+    void InvalidateCacheRange(const Common::AddressRange& range);
 
 private:
     // Microinstruction emitters

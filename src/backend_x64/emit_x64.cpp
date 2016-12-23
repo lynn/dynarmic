@@ -10,8 +10,10 @@
 #include "backend_x64/block_of_code.h"
 #include "backend_x64/emit_x64.h"
 #include "backend_x64/jitstate.h"
+#include "common/address_range.h"
 #include "common/assert.h"
 #include "common/bit_util.h"
+#include "common/common_types.h"
 #include "frontend/arm/types.h"
 #include "frontend/ir/basic_block.h"
 #include "frontend/ir/location_descriptor.h"
@@ -2807,6 +2809,59 @@ void EmitX64::ClearCache() {
     basic_blocks.clear();
     patch_jg_locations.clear();
     patch_jmp_locations.clear();
+}
+
+// Erase entries in an `unordered_map` whose keys have an address in the given range. The address is
+// extracted from the key by `get_address`.
+template <typename K, typename V>
+void EraseCacheMapRange(std::unordered_map<K, V>& map, std::function<u32(const K&)> get_address,
+                        const Common::AddressRange& range) {
+    for (auto it = std::begin(map); it != std::end(map);) {
+        if (range.Includes(get_address(it->first))) {
+            it = map.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+// Erase entries in an `unordered_map` whose keys are LocationDescriptors of blocks whose address
+// is in the given range.
+template <typename V>
+void EraseDescriptorRange(std::unordered_map<IR::LocationDescriptor, V>& map,
+                          const Common::AddressRange& range) {
+    std::function<u32(const IR::LocationDescriptor&)> get_address =
+        [](const IR::LocationDescriptor& ld) { return ld.PC(); };
+    EraseCacheMapRange(map, get_address, range);
+}
+
+// Erase entries in an `unordered_map` whose keys are u64 "unique hashes" for which the hash's
+// address (lowest 32 bits) is in the given range.
+template <typename V>
+void EraseUniqueHashRange(std::unordered_map<u64, V>& map, const Common::AddressRange& range) {
+    std::function<u32(const std::uint64_t&)> get_address = [](const std::uint64_t& hash) {
+        return u32(hash);
+    };
+    EraseCacheMapRange(map, get_address, range);
+}
+
+void EmitX64::InvalidateCacheRange(const Common::AddressRange& range) {
+    // EraseUniqueHashRange(unique_hash_to_code_ptr, range);
+    // EraseUniqueHashRange(patch_unique_hash_locations, range);
+    // EraseDescriptorRange(basic_blocks, range);
+    // EraseDescriptorRange(patch_jg_locations, range);
+    // EraseDescriptorRange(patch_jmp_locations, range);
+    // TODO: This isn't working at all, yet!
+
+    for (auto it = std::begin(basic_blocks); it != std::end(basic_blocks);) {
+        // Need to check for *overlap* with blocks.
+        
+        /* if (range.Includes(get_address(it->first))) {
+            it = map.erase(it);
+        } else {
+            ++it;
+        } */
+    }
 }
 
 } // namespace BackendX64
