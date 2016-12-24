@@ -892,6 +892,8 @@ IR::Block TranslateThumb(IR::LocationDescriptor descriptor, MemoryRead32FuncType
         visitor.ir.block.CycleCount()++;
     }
 
+    visitor.ir.block.SetEndLocation(visitor.ir.current_location);
+
     return std::move(visitor.ir.block);
 }
 

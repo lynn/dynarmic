@@ -19,6 +19,7 @@ namespace Common {
 class AddressRange {
 public:
     virtual bool Includes(u32 address) const = 0;
+    virtual bool Overlaps(u32 start_address, u32 end_address) const = 0;
 };
 
 class AddressInterval : public AddressRange {
@@ -30,6 +31,10 @@ public:
         return address >= start_address && address < start_address + length;
     }
 
+    bool Overlaps(u32 start_address, u32 end_address) const {
+        return this->start_address <= end_address && start_address <= this->start_address + length;
+    }
+
 private:
     u32 start_address;
     std::size_t length;
@@ -38,6 +43,10 @@ private:
 class FullAddressRange : public AddressRange {
 public:
     bool Includes(u32 address) const override {
+        return true;
+    }
+
+    bool Overlaps(u32 start_address, u32 end_address) const override {
         return true;
     }
 };

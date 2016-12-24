@@ -98,6 +98,7 @@ EmitX64::BlockDescriptor EmitX64::Emit(IR::Block& block) {
 
     Patch(descriptor, code_ptr);
     basic_blocks[descriptor].size = std::intptr_t(code->getCurr()) - std::intptr_t(code_ptr);
+    basic_blocks[descriptor].end_location_pc = block.EndLocation().PC();
     return basic_blocks[descriptor];
 }
 
@@ -2825,42 +2826,18 @@ void EraseCacheMapRange(std::unordered_map<K, V>& map, std::function<u32(const K
     }
 }
 
-// Erase entries in an `unordered_map` whose keys are LocationDescriptors of blocks whose address
-// is in the given range.
-template <typename V>
-void EraseDescriptorRange(std::unordered_map<IR::LocationDescriptor, V>& map,
-                          const Common::AddressRange& range) {
-    std::function<u32(const IR::LocationDescriptor&)> get_address =
-        [](const IR::LocationDescriptor& ld) { return ld.PC(); };
-    EraseCacheMapRange(map, get_address, range);
-}
-
-// Erase entries in an `unordered_map` whose keys are u64 "unique hashes" for which the hash's
-// address (lowest 32 bits) is in the given range.
-template <typename V>
-void EraseUniqueHashRange(std::unordered_map<u64, V>& map, const Common::AddressRange& range) {
-    std::function<u32(const std::uint64_t&)> get_address = [](const std::uint64_t& hash) {
-        return u32(hash);
-    };
-    EraseCacheMapRange(map, get_address, range);
-}
-
 void EmitX64::InvalidateCacheRange(const Common::AddressRange& range) {
-    // EraseUniqueHashRange(unique_hash_to_code_ptr, range);
-    // EraseUniqueHashRange(patch_unique_hash_locations, range);
-    // EraseDescriptorRange(basic_blocks, range);
-    // EraseDescriptorRange(patch_jg_locations, range);
-    // EraseDescriptorRange(patch_jmp_locations, range);
     // TODO: This isn't working at all, yet!
 
     for (auto it = std::begin(basic_blocks); it != std::end(basic_blocks);) {
         // Need to check for *overlap* with blocks.
-        
-        /* if (range.Includes(get_address(it->first))) {
-            it = map.erase(it);
+        u32 start = it->first.PC();
+        u32 end = it->second.end_location_pc;
+        if (range.Overlaps(start, end)) {
+            it = basic_blocks.erase(it);
         } else {
             ++it;
-        } */
+        }
     }
 }
 
