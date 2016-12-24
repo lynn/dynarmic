@@ -64,10 +64,9 @@ EmitX64::BlockDescriptor EmitX64::Emit(IR::Block& block) {
     reg_alloc.Reset();
 
     code->align();
-    const CodePtr code_ptr = code->getCurr();
-    EmitX64::BlockDescriptor& block_desc = block_descriptors[descriptor.UniqueHash()];
-    block_desc.code_ptr = code_ptr;
+    const CodePtr entrypoint = code->getCurr();
 
+    // Start emitting.
     EmitCondPrelude(block);
 
     for (auto iter = block.begin(); iter != block.end(); ++iter) {
@@ -97,9 +96,11 @@ EmitX64::BlockDescriptor EmitX64::Emit(IR::Block& block) {
 
     reg_alloc.AssertNoMoreUses();
 
-    Patch(descriptor, code_ptr);
-    block_desc.size = std::intptr_t(code->getCurr()) - std::intptr_t(code_ptr);
-    block_desc.end_location_pc = block.EndLocation().PC();
+    Patch(descriptor, entrypoint);
+
+    const size_t size = std::intptr_t(code->getCurr()) - std::intptr_t(entrypoint);
+    EmitX64::BlockDescriptor block_desc{ entrypoint, size, block.Location(), block.EndLocation().PC() };
+    block_descriptors.emplace(descriptor.UniqueHash(), block_desc);
     return block_desc;
 }
 
@@ -426,7 +427,7 @@ void EmitX64::EmitPushRSB(IR::Block&, IR::Inst* inst) {
 
     auto iter = block_descriptors.find(unique_hash_of_target);
     CodePtr target_code_ptr = iter != block_descriptors.end()
-                            ? iter->second.code_ptr
+                            ? iter->second.entrypoint
                             : code->GetReturnFromRunCodeAddress();
 
     Xbyak::Reg64 code_ptr_reg = reg_alloc.ScratchGpr({HostLoc::RCX});
@@ -3098,7 +3099,7 @@ void EmitX64::EmitTerminalLinkBlock(IR::Term::LinkBlock terminal, IR::LocationDe
 
     patch_information[terminal.next.UniqueHash()].jg.emplace_back(code->getCurr());
     if (auto next_bb = GetBasicBlock(terminal.next)) {
-        EmitPatchJg(next_bb->code_ptr);
+        EmitPatchJg(next_bb->entrypoint);
     } else {
         EmitPatchJg();
     }
@@ -3127,7 +3128,7 @@ void EmitX64::EmitTerminalLinkBlockFast(IR::Term::LinkBlockFast terminal, IR::Lo
 
     patch_information[terminal.next.UniqueHash()].jmp.emplace_back(code->getCurr());
     if (auto next_bb = GetBasicBlock(terminal.next)) {
-        EmitPatchJmp(terminal.next, next_bb->code_ptr);
+        EmitPatchJmp(terminal.next, next_bb->entrypoint);
     } else {
         EmitPatchJmp(terminal.next);
     }
@@ -3228,32 +3229,32 @@ void EmitX64::ClearCache() {
     patch_information.clear();
 }
 
-// Erase entries in an `unordered_map` whose keys have an address in the given range. The address is
-// extracted from the key by `get_address`.
-template <typename K, typename V>
-void EraseCacheMapRange(std::unordered_map<K, V>& map, std::function<u32(const K&)> get_address,
-                        const Common::AddressRange& range) {
-    for (auto it = std::begin(map); it != std::end(map);) {
-        if (range.Includes(get_address(it->first))) {
-            it = map.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
 void EmitX64::InvalidateCacheRange(const Common::AddressRange& range) {
-    // TODO: This isn't working at all, yet!
+    // Remove cached block descriptors and patch information overlapping with the given range.
 
-    for (auto it = std::begin(basic_blocks); it != std::end(basic_blocks);) {
-        // Need to check for *overlap* with blocks.
-        u32 start = it->first.PC();
-        u32 end = it->second.end_location_pc;
-        if (range.Overlaps(start, end)) {
-            it = basic_blocks.erase(it);
-        } else {
-            ++it;
+    switch (range.which()) {
+    case 0: // FullAddressRange
+        ClearCache();
+        break;
+
+    case 1: // AddressInterval
+        auto interval = boost::get<Common::AddressInterval>(range);
+        for (auto it = std::begin(block_descriptors); it != std::end(block_descriptors);) {
+            const IR::LocationDescriptor& descriptor = it->second.start_location;
+            u32 start = descriptor.PC();
+            u32 end = it->second.end_location_pc;
+            if (interval.Overlaps(start, end)) {
+                it = block_descriptors.erase(it);
+
+                auto patch_it = patch_information.find(descriptor.UniqueHash());
+                if (patch_it != patch_information.end()) {
+                    Unpatch(descriptor);
+                }
+            } else {
+                ++it;
+            }
         }
+        break;
     }
 }
 

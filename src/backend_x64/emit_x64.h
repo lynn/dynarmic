@@ -35,9 +35,11 @@ class BlockOfCode;
 class EmitX64 final {
 public:
     struct BlockDescriptor {
-        CodePtr code_ptr;     // Entrypoint of emitted code
-        size_t size;          // Length in bytes of emitted code
-        u32 end_location_pc;  // Location of PC at end of block
+        CodePtr entrypoint;  // Entrypoint of emitted code
+        size_t size;         // Length in bytes of emitted code
+
+        IR::LocationDescriptor start_location;
+        u32 end_location_pc;
     };
 
     EmitX64(BlockOfCode* code, UserCallbacks cb, Jit* jit_interface);

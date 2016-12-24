@@ -7,49 +7,27 @@
 #pragma once
 
 #include <cstddef>
-// #include <iterator>
-// #include <memory>
-// #include <type_traits>
+
+#include <boost/variant.hpp>
 
 #include "common/common_types.h"
 
 namespace Dynarmic {
 namespace Common {
 
-class AddressRange {
-public:
-    virtual bool Includes(u32 address) const = 0;
-    virtual bool Overlaps(u32 start_address, u32 end_address) const = 0;
-};
+struct FullAddressRange {};
 
-class AddressInterval : public AddressRange {
-public:
-    AddressInterval(u32 start_address, std::size_t length)
-        : start_address(start_address), length(length) {}
-
-    bool Includes(u32 address) const override {
-        return address >= start_address && address < start_address + length;
-    }
-
-    bool Overlaps(u32 start_address, u32 end_address) const {
-        return this->start_address <= end_address && start_address <= this->start_address + length;
-    }
-
-private:
+struct AddressInterval {
     u32 start_address;
     std::size_t length;
-};
 
-class FullAddressRange : public AddressRange {
-public:
-    bool Includes(u32 address) const override {
-        return true;
-    }
-
-    bool Overlaps(u32 start_address, u32 end_address) const override {
-        return true;
+    // Does this interval overlap with [from, to)?
+    bool Overlaps(u32 from, u32 to) const {
+        return start_address <= to && from <= start_address + length;
     }
 };
+
+using AddressRange = boost::variant<FullAddressRange, AddressInterval>;
 
 } // namespace Common
 } // namespace Dynarmic
